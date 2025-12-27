@@ -1,0 +1,74 @@
+{
+  "name": "kritiq",
+  "displayName": "Kritiq",
+  "description": "Gemini bases AI Code Reviewer Agent",
+  "version": "0.0.1",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.107.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+
+  
+  "contributes": {
+    "commands": [
+      {
+        "command": "kritiq.startReview",
+        "title": "Kritiq: Auto-Fix & Review Code"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "kritiq.startReview",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Kritiq AI",
+      "properties": {
+        "kritiq.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Enter your Google Gemini API Key."
+        },
+        "kritiq.reviewMode": {
+          "type": "string",
+          "default": "Standard",
+          "enum": [
+            "Standard",
+            "Bug Fix Only",
+            "Comment & Explain",
+            "Code Cleanup"
+          ],
+          "description": "Choose the personality of the AI Reviewer."
+        }
+      }
+    }
+  },
+
+
+
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.107.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.39.1"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1"
+  }
+}
