@@ -3,6 +3,31 @@
 > **Kritiq** is an AI-powered code review and auto-fix agent for Visual Studio Code. It reviews entire folders, understands project context, and applies transparent, reversible fixes directly inside your editor — like a calm senior engineer reviewing your codebase.
 
 ---
+### Right-Click → Review (Zero Context Switching)
+
+No chat windows. No copy-paste.
+
+Just:
+
+1. Right-click any folder in the VS Code Explorer
+2. Select **“Kritiq: Auto-Fix & Review Code”**
+3. Watch Kritiq analyze and fix files in place
+
+---
+## How to Use
+
+1. Open a project folder in VS Code
+2. Set your Gemini API key:
+
+   * Settings → `Kritiq AI` → `API Key`
+3. Right-click a folder
+4. Select **Kritiq: Auto-Fix & Review Code**
+5. Watch progress in:
+
+   * Notification bar
+   * Output panel: **“Kritiq AI Logs”**
+
+---
 
 ## Why Kritiq Exists
 
@@ -47,19 +72,9 @@ Supported languages (v1):
 
 ---
 
-### 2. Right-Click → Review (Zero Context Switching)
 
-No chat windows. No copy-paste.
 
-Just:
-
-1. Right-click any folder in the VS Code Explorer
-2. Select **“Kritiq: Auto-Fix & Review Code”**
-3. Watch Kritiq analyze and fix files in place
-
----
-
-### 3. Smart File Filtering (Token & Cost Efficient)
+### 2. Smart File Filtering (Token & Cost Efficient)
 
 Kritiq **never sends your entire project blindly**.
 
@@ -74,7 +89,7 @@ Result: **~80% token savings** vs naive AI scripts.
 
 ---
 
-### 4. Transparent AI Fixes (No Black Box)
+### 3. Transparent AI Fixes (No Black Box)
 
 Every AI change is clearly marked:
 
@@ -90,7 +105,7 @@ You can:
 
 ---
 
-### 5. Safe Editing with Full Undo
+### 4. Safe Editing with Full Undo
 
 Kritiq **never overwrites files directly**.
 
@@ -102,18 +117,7 @@ It uses VS Code’s `WorkspaceEdit` API:
 
 ---
 
-### 6. Review Modes (AI Personality Control)
 
-Choose how Kritiq behaves:
-
-* **Standard** – Balanced review
-* **Bug Fix Only** – Fix errors, avoid refactors
-* **Comment & Explain** – Add clarifying comments
-* **Code Cleanup** – Improve style & readability
-
-Configured via VS Code Settings.
-
----
 
 ## Safety & Engineering Guarantees
 
@@ -142,20 +146,7 @@ Press **F5** to launch a Development Host of VS Code.
 
 ---
 
-## How to Use
 
-1. Open a project folder in VS Code
-2. Set your Gemini API key:
-
-   * Settings → `Kritiq AI` → `API Key`
-3. Right-click a folder
-4. Select **Kritiq: Auto-Fix & Review Code**
-5. Watch progress in:
-
-   * Notification bar
-   * Output panel: **“Kritiq AI Logs”**
-
----
 
 ## Output & Logs
 

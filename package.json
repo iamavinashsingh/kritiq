@@ -1,19 +1,27 @@
 {
   "name": "kritiq",
-  "displayName": "Kritiq",
-  "description": "Gemini bases AI Code Reviewer Agent",
-  "version": "0.0.1",
+  "displayName": "Kritiq AI: The Senior Reviewer",
+  "description": "One-click AI Code Reviewer & Auto-Fix Agent using Gemini.",
+  "publisher": "AvinashSingh",
+  "version": "1.0.0",
   "icon": "icon.png",
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.90.0"
   },
   "categories": [
+    "Programming Languages",
+    "Linters",
     "Other"
+  ],
+  "keywords": [
+    "AI",
+    "Code Review",
+    "Gemini",
+    "Auto-fix",
+    "Refactor"
   ],
   "activationEvents": [],
   "main": "./extension.js",
-
-  
   "contributes": {
     "commands": [
       {
@@ -37,24 +45,10 @@
           "type": "string",
           "default": "",
           "description": "Enter your Google Gemini API Key."
-        },
-        "kritiq.reviewMode": {
-          "type": "string",
-          "default": "Standard",
-          "enum": [
-            "Standard",
-            "Bug Fix Only",
-            "Comment & Explain",
-            "Code Cleanup"
-          ],
-          "description": "Choose the personality of the AI Reviewer."
         }
       }
     }
   },
-
-
-
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
@@ -62,11 +56,11 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "@types/vscode": "^1.107.0",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.90.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.39.1"
+    "eslint": "^9.0.0"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1"
