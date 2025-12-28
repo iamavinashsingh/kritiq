@@ -26,13 +26,13 @@ function activate(context) {
       }
 
       if (!uri || !uri.fsPath) {
-        vscode.window.showErrorMessage("Please right-click on a folder.");
+        vscode.window.showErrorMessage("Please right-click on a folder or file.");
         return;
       }
 
       try {
         isRunning = true;
-        const folderPath = uri.fsPath;
+        const targetPath = uri.fsPath;
         const config = vscode.workspace.getConfiguration("kritiq");
         const apiKey = config.get("apiKey");
 
@@ -47,22 +47,51 @@ function activate(context) {
               "kritiq.apiKey"
             );
           }
+          isRunning = false;
           return;
         }
 
-        // 2. SMART SCANNING (Enhanced Blocklist from Version B)
-        log(`📂 Scanning folder: ${folderPath}`);
-        let files = getAllFiles(folderPath);
+        // 2. SMART SCANNING (Hybrid: Works for Single File OR Folder)
+        let files = [];
+        
+        try {
+            const stats = fs.statSync(targetPath);
+            
+            if (stats.isFile()) {
+                // --- SINGLE FILE MODE ---
+                const ext = path.extname(targetPath).toLowerCase();
+                const allowedExtensions = [".js", ".jsx", ".ts", ".html", ".css", ".py", ".java", ".c", ".cpp"];
+                
+                if (allowedExtensions.includes(ext)) {
+                    files = [targetPath];
+                    log(`📄 Single file detected: ${path.basename(targetPath)}`);
+                } else {
+                    vscode.window.showWarningMessage("Kritiq does not support this file type.");
+                    log(`❌ Unsupported file type: ${ext}`);
+                    isRunning = false;
+                    return;
+                }
+            } else if (stats.isDirectory()) {
+                // --- FOLDER MODE ---
+                log(`📂 Scanning folder: ${targetPath}`);
+                files = getAllFiles(targetPath);
+            }
+        } catch (e) {
+            vscode.window.showErrorMessage(`Error reading path: ${e.message}`);
+            isRunning = false;
+            return;
+        }
 
         if (files.length === 0) {
           vscode.window.showWarningMessage("No supported code files found.");
           log("⚠️ No supported code files found.");
+          isRunning = false;
           return;
         }
 
         // 3. IMPRESSIVE LOGGING (List files first)
         log("---------------------------------------------------");
-        log(`📋 Found ${files.length} files to review:`);
+        log(`📋 Found ${files.length} file(s) to review:`);
         files.forEach((f, index) => {
           log(`${index + 1}. ${path.basename(f)}`);
         });
@@ -92,8 +121,9 @@ function activate(context) {
           },
           async (progress, token) => {
             const genAI = new GoogleGenerativeAI(apiKey);
+           
             const model = genAI.getGenerativeModel({
-              model: "gemini-2.5-flash",
+              model: "gemini-2.5-flash", 
             });
 
             for (const filePath of files) {

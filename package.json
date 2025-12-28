@@ -3,7 +3,7 @@
   "displayName": "Kritiq AI: The Senior Reviewer",
   "description": "One-click AI Code Reviewer & Auto-Fix Agent using Gemini.",
   "publisher": "AvinashSingh",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.90.0"
@@ -33,7 +33,7 @@
       "explorer/context": [
         {
           "command": "kritiq.startReview",
-          "when": "explorerResourceIsFolder",
+          "when": "explorerResourceIsFolder || resourceScheme == 'file'",
           "group": "navigation"
         }
       ]
