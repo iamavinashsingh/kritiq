@@ -1,403 +1,237 @@
+/* extension.js - The Controller */
 const vscode = require("vscode");
 const path = require("path");
 const fs = require("fs");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { ChatGoogleGenerativeAI } = require("@langchain/google-genai");
+
+// --- IMPORT AGENTS ---
+const cleanupAgent = require("./cleanup");
+const securityAgent = require("./security");
+const creatorAgent = require("./creator");
 
 let outputChannel;
-let isRunning = false;
 
 function activate(context) {
-  // 1. Initialize Matrix Logs
-  outputChannel = vscode.window.createOutputChannel("Kritiq AI Logs");
-  log("🚀 Kritiq AI: System Initialized & Ready.");
+    // Initialize Output Channel
+    outputChannel = vscode.window.createOutputChannel("Kritiq AI Manager");
+    log("Kritiq AI: Waiting for commands...");
 
-  let disposable = vscode.commands.registerCommand(
-    "kritiq.startReview",
-    async function (uri) {
-      outputChannel.clear();
-      outputChannel.show(true);
+    let disposable = vscode.commands.registerCommand("kritiq.startReview", async (uri) => {
+        outputChannel.clear();
+        outputChannel.show(true);
 
-      // --- SAFETY: CONCURRENCY LOCK ---
-      if (isRunning) {
-        vscode.window.showWarningMessage(
-          "⚠️ Kritiq is already running! Please wait."
-        );
-        return;
-      }
-
-      if (!uri || !uri.fsPath) {
-        vscode.window.showErrorMessage("Please right-click on a folder or file.");
-        return;
-      }
-
-      try {
-        isRunning = true;
-        const targetPath = uri.fsPath;
-        const config = vscode.workspace.getConfiguration("kritiq");
-        const apiKey = config.get("apiKey");
-
+        // 1. SECURE API KEY (Immediate Check)
+        const apiKey = await getSecureApiKey(context);
         if (!apiKey) {
-          const action = await vscode.window.showErrorMessage(
-            "Gemini API Key missing! Set it in Settings.",
-            "Open Settings"
-          );
-          if (action === "Open Settings") {
-            vscode.commands.executeCommand(
-              "workbench.action.openSettings",
-              "kritiq.apiKey"
-            );
-          }
-          isRunning = false;
-          return;
-        }
-
-        // 2. SMART SCANNING (Hybrid: Works for Single File OR Folder)
-        let files = [];
-        
-        try {
-            const stats = fs.statSync(targetPath);
-            
-            if (stats.isFile()) {
-                // --- SINGLE FILE MODE ---
-                const ext = path.extname(targetPath).toLowerCase();
-                const allowedExtensions = [".js", ".jsx", ".ts", ".html", ".css", ".py", ".java", ".c", ".cpp"];
-                
-                if (allowedExtensions.includes(ext)) {
-                    files = [targetPath];
-                    log(`📄 Single file detected: ${path.basename(targetPath)}`);
-                } else {
-                    vscode.window.showWarningMessage("Kritiq does not support this file type.");
-                    log(`❌ Unsupported file type: ${ext}`);
-                    isRunning = false;
-                    return;
-                }
-            } else if (stats.isDirectory()) {
-                // --- FOLDER MODE ---
-                log(`📂 Scanning folder: ${targetPath}`);
-                files = getAllFiles(targetPath);
-            }
-        } catch (e) {
-            vscode.window.showErrorMessage(`Error reading path: ${e.message}`);
-            isRunning = false;
+            log("⚠️API Key missing.");
             return;
         }
 
-        if (files.length === 0) {
-          vscode.window.showWarningMessage("No supported code files found.");
-          log("⚠️ No supported code files found.");
-          isRunning = false;
-          return;
+        // 2. TARGET SELECTION
+        // If triggered from command palette (no uri), default to workspace root
+        if (!uri && vscode.workspace.workspaceFolders) {
+            uri = vscode.workspace.workspaceFolders[0].uri;
+        } 
+        
+        if (!uri) {
+            vscode.window.showErrorMessage("Please open a file or folder first.");
+            return;
         }
+        
+        const targetPath = uri.fsPath;
+        log(`📂 Target selected: ${targetPath}`);
 
-        // 3. IMPRESSIVE LOGGING (List files first)
-        log("---------------------------------------------------");
-        log(`📋 Found ${files.length} file(s) to review:`);
-        files.forEach((f, index) => {
-          log(`${index + 1}. ${path.basename(f)}`);
-        });
-        log("---------------------------------------------------");
-
-        // Safety: Hard Cap at 15 files (Version A simplicity)
-        if (files.length > 15) {
-          log(
-            `⚠️ Large project detected. Limiting to top 15 files for safety.`
-          );
-          files = files.slice(0, 15);
-        }
-
-        const projectStructure = files
-          .map((f) => path.basename(f))
-          .join("\n- ");
-
-        // --- STATS TRACKING (From Version B) ---
-        let stats = { fixed: 0, clean: 0, errors: 0 };
-
-        // 4. START PROCESSING
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Kritiq: Senior Review in progress...",
-            cancellable: true,
-          },
-          async (progress, token) => {
-            const genAI = new GoogleGenerativeAI(apiKey);
-           
-            const model = genAI.getGenerativeModel({
-              model: "gemini-2.5-flash", 
-            });
-
-            for (const filePath of files) {
-              // Check Cancel
-              if (token.isCancellationRequested) {
-                log("🛑 Operation cancelled by user.");
-                break;
-              }
-
-              const fileName = path.basename(filePath);
-              progress.report({ message: `Reviewing ${fileName}...` });
-
-              try {
-                const code = fs.readFileSync(filePath, "utf8");
-
-                // Skip empty or huge files
-                if (!code.trim() || code.length > 40000) {
-                  log(`⏭️ Skipped ${fileName} (Empty or Too Large)`);
-                  stats.clean++;
-                  continue;
-                }
-
-                // --- THE GOLDEN PROMPT (Version A - Senior Engineer) ---
-                const prompt = `
-                        SYSTEM ROLE:
-                        You are KRITIQ, a senior-level code editor and reviewer embedded inside a developer’s IDE.
-                        You are NOT a chatbot. You are a deterministic reviewer whose output is written directly to files.
-                        Your priority order is: SAFETY > CORRECTNESS > MINIMAL CHANGE > CLARITY.
-
-                        TASK:
-                        Review and fix bugs in the provided source file: ${fileName}
-
-                        You are operating under STRICT engineering constraints.
-
-                        ────────────────────────────────────────
-                        CRITICAL OUTPUT CONTRACT (NON-NEGOTIABLE)
-                        ────────────────────────────────────────
-                        1. OUTPUT ONLY VALID SOURCE CODE.
-                           - Do NOT use markdown.
-                           - Do NOT include explanations outside code.
-                           - Do NOT wrap output in \`\`\` blocks.
-                           - Any extra text will BREAK the program.
-
-                        2. RETURN THE FULL FILE CONTENT.
-                           - Do NOT omit lines.
-                           - Do NOT summarize.
-                           - Do NOT use placeholders like “…rest of code”.
-
-                        3. IF NO ISSUES ARE FOUND:
-                           - Return the ORIGINAL CODE verbatim, byte-for-byte.
-
-                        ────────────────────────────────────────
-                        CHANGE RULES (TRUST & TRANSPARENCY)
-                        ────────────────────────────────────────
-                        4. MAKE ONLY NECESSARY CHANGES.
-                           - Do NOT refactor for style.
-                           - Do NOT reformat.
-                           - Do NOT rename symbols unless they are clearly broken or misspelled.
-
-                        5. EVERY CHANGE MUST BE TRACEABLE.
-                           - On the SAME LINE where a fix is applied, add:
-                             // KRITIQ FIX: <short reason>
-                           - For HTML/CSS use appropriate comment syntax (or /* KRITIQ FIX: ... */).
-                           - Do NOT add file-level or summary comments.
-
-                        6. PRESERVE PUBLIC CONTRACTS.
-                           - Do NOT change exported functions, classes, or APIs.
-
-                        ────────────────────────────────────────
-                        WHAT TO FIX (FOCUSED SCOPE)
-                        ────────────────────────────────────────
-                        ONLY fix the following categories:
-
-                        • Syntax errors (missing brackets, invalid tokens)
-                        • Clear typos (e.g., backgroud → background)
-                        • Runtime errors (null/undefined access, type errors)
-                        • Security risks (eval, unsafe input handling, hardcoded secrets)
-                        • Deprecated or invalid constructs (e.g., <center>)
-                        • Broken logic that causes incorrect behavior
-                        ────────────────────────────────────────
-                        CONDITIONAL END-TO-END COMPLETION (STRICTLY GUARDED)
-                        ────────────────────────────────────────
-                        You may complete an implementation END-TO-END across related HTML, CSS, and JavaScript files
-                        ONLY IF ALL of the following conditions are true:
-
-                        1. The files together clearly represent a single feature or mini-application
-                        (e.g., Calculator, LeetCode-style problem runner, Swiggy/Amazon UI clone).
-
-                        2. The intent of the feature is obvious from the code structure, naming, and UI elements.
-
-                        3. The implementation is clearly incomplete, broken, or non-functional
-                        (e.g., missing event handlers, incomplete logic, disconnected UI).
-
-                        4. The expected behavior is standard and unambiguous to any frontend developer.
-                        5. UI/CSS HANDLING:
-                        - If UI/CSS is complete and intentional, do NOT modify it.
-                        - If partially implemented, complete it following the existing design direction.
-                        - If missing or severely broken, you may create minimal, clean, user-friendly UI.
-
-                        6. UI SAFETY:
-                        - Do NOT redesign, rebrand, or add visual flair.
-                        - Do NOT change structure, classes, or IDs unless clearly broken.
-
-                        7. TRACEABILITY:
-                        - Every UI/CSS change MUST include a KRITIQ FIX comment.
-
-
-                        WHEN these conditions are met:
-                        • You MAY complete missing logic so the feature works correctly.
-                        • You MUST preserve existing structure, layout, and naming.
-                        • You MUST NOT introduce new features beyond the obvious intent.
-                        • You MUST add "KRITIQ FIX" comments on EVERY modified or newly added line.
-
-                        IF ANY condition above is NOT met:
-                        → DO NOT attempt end-to-end completion.
-                        → Fall back to minimal bug fixing only.
-                        → If uncertain, return the original code unchanged.
-
-
-                        ────────────────────────────────────────
-                        PROJECT CONTEXT (READ-ONLY)
-                        ────────────────────────────────────────
-                        The following files exist in the same project.
-                        ${projectStructure}
-
-                        ────────────────────────────────────────
-                        SOURCE CODE TO REVIEW
-                        ────────────────────────────────────────
-                        ${code}
-                        `;
-
-                // --- 120s TIMEOUT ---
-                const timeoutPromise = new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error("TIMEOUT")), 120000)
-                );
-
-                const apiCall = model.generateContent(prompt);
-                const result = await Promise.race([apiCall, timeoutPromise]);
-                const response = await result.response;
-                let fixedCode = response.text();
-
-                // Cleanup (Markdown Strip)
-                fixedCode = fixedCode
-                  .replace(/^```[a-z]*\n/i, "")
-                  .replace(/\n```$/, "")
-                  .trim();
-
-                // Validation
-                if (fixedCode && fixedCode.length > 10 && fixedCode !== code) {
-                  await applyFileEdit(filePath, fixedCode);
-                  log(`✅ FIXED: ${fileName}`);
-                  stats.fixed++;
-                } else {
-                  log(`✨ CLEAN: ${fileName}`);
-                  stats.clean++;
-                }
-              } catch (err) {
-                stats.errors++;
-
-                // --- QUOTA PROTECTION (From Version B) ---
-                if (err.message.includes("429")) {
-                  log(`⛔ GEMINI QUOTA EXCEEDED. Stopping.`);
-                  vscode.window.showErrorMessage(
-                    "Gemini API Quota Exceeded. Stopping review."
-                  );
-                  break; // Stop loop immediately
-                }
-
-                log(`❌ ERROR ${fileName}: ${err.message}`);
-              }
-            }
-
-            // --- FINAL SUMMARY (From Version B) ---
-            vscode.window.showInformationMessage(
-              `Review Complete! 🎯 Fixed: ${stats.fixed} | Clean: ${stats.clean} | Skipped/Err: ${stats.errors}`
-            );
-          }
+        // 3. MODE SELECTION
+        const mode = await vscode.window.showQuickPick(
+            [
+                { label: "🐞 Bug Fix & Cleanup", id: "cleanup", detail: "Fix bugs, format code, and remove logs." },
+                { label: "🛡️ Security Audit", id: "security", detail: "Find vulnerabilities and patch them." },
+                { label: "✨ Creator Mode", id: "creator", detail: "Generate full features from scratch." }
+            ],
+            { placeHolder: "Select Kritiq Agent", ignoreFocusOut: true }
         );
-      } catch (error) {
-        vscode.window.showErrorMessage(`Error: ${error.message}`);
-        log(`💥 CRITICAL ERROR: ${error.message}`);
-      } finally {
-        isRunning = false; // UNLOCK
-      }
-    }
-  );
 
-  context.subscriptions.push(disposable);
-}
-
-function log(message) {
-  if (outputChannel) {
-    outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`);
-  }
-}
-
-// --- ENHANCED FILE FILTER (From Version B) ---
-function getAllFiles(dirPath, arrayOfFiles) {
-  const files = fs.readdirSync(dirPath);
-  arrayOfFiles = arrayOfFiles || [];
-
-  // Supported Languages
-  const allowed = [
-    ".js",
-    ".jsx",
-    ".ts",
-    ".html",
-    ".css",
-    ".py",
-    ".java",
-    ".c",
-    ".cpp",
-  ];
-
-  // Strict Blocklist (Files to NEVER touch)
-  const blockedFiles = [
-    "package.json",
-    "package-lock.json",
-    "yarn.lock",
-    ".env",
-    ".env.local",
-    "README.md",
-    "LICENSE",
-    ".gitignore",
-    "tsconfig.json",
-  ];
-
-  // Ignored Suffixes
-  const ignoredSuffixes = [".min.js", ".test.js", ".spec.js", ".d.ts", ".map"];
-
-  // Blocked Folders
-  const blockedFolders = [
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-    ".vscode",
-    "coverage",
-    "bin",
-    "obj",
-    "venv",
-    "__pycache__",
-  ];
-
-  files.forEach((file) => {
-    const fullPath = path.join(dirPath, file);
-    try {
-      const stat = fs.statSync(fullPath);
-      if (stat.isDirectory()) {
-        if (!blockedFolders.includes(file)) getAllFiles(fullPath, arrayOfFiles);
-      } else {
-        const ext = path.extname(file);
-        const isBlocked = blockedFiles.includes(file);
-        const isIgnored = ignoredSuffixes.some((s) => file.endsWith(s));
-
-        if (allowed.includes(ext) && !isBlocked && !isIgnored) {
-          arrayOfFiles.push(fullPath);
+        if (!mode) {
+             log("🛑 Operation cancelled by user.");
+             return;
         }
-      }
-    } catch (e) {}
-  });
-  return arrayOfFiles;
+
+        // 4. INIT LANGCHAIN (Shared Instance)
+        const model = new ChatGoogleGenerativeAI({
+            // @ts-ignore
+            modelName: "gemini-2.5-flash",
+            apiKey: apiKey,
+            temperature: 0.2, // Low temp for precision
+        });
+
+        // 5. FILE GATHERING (Smart Filter from Team Avi)
+        let files = getTargetFiles(targetPath);
+        if (files.length === 0) {
+            vscode.window.showWarningMessage("No supported files found.");
+            return;
+        }
+        
+        // Safety cap for hackathon demo
+        if (files.length > 10) {
+            log(`⚠️ Large project. Limiting to first 10 files.`);
+            files = files.slice(0, 10);
+        }
+
+        log(`📋 Processing ${files.length} file(s) with mode: ${mode.label}`);
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Kritiq: Running ${mode.label}...`,
+            cancellable: true
+        }, async (progress, token) => {
+            
+            for (const filePath of files) {
+                if (token.isCancellationRequested) break;
+
+                const fileName = path.basename(filePath);
+                progress.report({ message: `Analyzing ${fileName}...` });
+                log(`🔍 Analyzing: ${fileName}`);
+
+                try {
+                    const originalCode = fs.readFileSync(filePath, "utf8");
+                    
+                    // Skip empty files unless in Creator Mode
+                    if (mode.id !== 'creator' && (!originalCode.trim() || originalCode.length > 50000)) {
+                         log(`⏭️ Skipped (Empty/Too Large): ${fileName}`);
+                         continue;
+                    }
+
+                    let newCode = "";
+
+                    // 6. DELEGATE TO SPECIALIZED AGENTS
+                    if (mode.id === "cleanup") {
+                        newCode = await cleanupAgent.execute(model, originalCode, fileName);
+                    } else if (mode.id === "security") {
+                        newCode = await securityAgent.execute(model, originalCode, fileName);
+                    } else if (mode.id === "creator") {
+                        // Creator needs user input
+                        const instruction = await vscode.window.showInputBox({
+                            prompt: `What should I build in ${fileName}?`,
+                            placeHolder: "e.g., A login form with validation"
+                        });
+                        if (!instruction) continue; // Skip if no instruction
+                        newCode = await creatorAgent.execute(model, originalCode, fileName, instruction);
+                    }
+
+                    // 7. THE "WINNING" DIFF VIEW
+                    if (newCode && newCode !== originalCode) {
+                        const applied = await showDiffPreview(filePath, originalCode, newCode, fileName);
+                        if (applied) {
+                             log(`Changes applied to ${fileName}`);
+                        } else {
+                             log(`Changes discarded for ${fileName}`);
+                        }
+                    } else {
+                        log(`No critical issues found in ${fileName}`);
+                    }
+
+                } catch (err) {
+                    vscode.window.showErrorMessage(`Agent Failure: ${err.message}`);
+                    log(`❌ Error in ${fileName}: ${err.message}`);
+                }
+            }
+        });
+        
+        log("Operation Complete...");
+    });
+
+    context.subscriptions.push(disposable);
 }
 
-async function applyFileEdit(filePath, newContent) {
-  const uri = vscode.Uri.file(filePath);
-  const edit = new vscode.WorkspaceEdit();
-  const fullRange = new vscode.Range(0, 0, Number.MAX_VALUE, Number.MAX_VALUE);
-  edit.replace(uri, fullRange, newContent);
-  await vscode.workspace.applyEdit(edit);
-  const doc = await vscode.workspace.openTextDocument(uri);
-  await doc.save();
+// --- UTILITIES ---
+
+async function getSecureApiKey(context) {
+    let key = await context.secrets.get("KRITIQ_GEMINI_KEY");
+    if (!key) {
+        key = await vscode.window.showInputBox({
+            prompt: "Enter Google Gemini API Key",
+            placeHolder: "Starts with AIza...",
+            password: true,
+            ignoreFocusOut: true
+        });
+        if (key) {
+            await context.secrets.store("KRITIQ_GEMINI_KEY", key);
+            vscode.window.showInformationMessage("Key saved securely!");
+        }
+    }
+    return key;
+}
+
+// The "Smart Filter" Logic (Kept from Team Avi)
+function getTargetFiles(targetPath) {
+    let files = [];
+    try {
+        const stats = fs.statSync(targetPath);
+        if (stats.isFile()) return [targetPath];
+        if (stats.isDirectory()) return getAllFilesRecursive(targetPath);
+    } catch (e) {
+        log(`Error reading path: ${e.message}`);
+    }
+    return files;
+}
+
+function getAllFilesRecursive(dir, fileList = []) {
+    const files = fs.readdirSync(dir);
+    const blockedFolders = ["node_modules", ".git", "dist", "build", "out", ".vscode", "coverage", "__pycache__"];
+    const blockedFiles = ["package-lock.json", ".env", "yarn.lock", "package.json"];
+    const allowedExts = [".js", ".jsx", ".ts", ".tsx", ".py", ".java", ".html", ".css", ".c", ".cpp"];
+
+    files.forEach(file => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+
+        if (stat.isDirectory()) {
+            if (!blockedFolders.includes(file)) getAllFilesRecursive(filePath, fileList);
+        } else {
+            if (allowedExts.includes(path.extname(file)) && !blockedFiles.includes(file)) {
+                fileList.push(filePath);
+            }
+        }
+    });
+    return fileList;
+}
+
+async function showDiffPreview(filePath, original, modified, fileName) {
+    // Create temp file for diff comparison
+    const tempUri = vscode.Uri.parse(`untitled:${fileName}.preview`);
+    const doc = await vscode.workspace.openTextDocument(tempUri);
+    const edit = new vscode.WorkspaceEdit();
+    
+    // Replace temp content with AI modifications
+    const fullRange = new vscode.Range(0, 0, doc.lineCount + 1, 0); // Ensure full range cover
+    edit.replace(tempUri, fullRange, modified);
+    await vscode.workspace.applyEdit(edit);
+
+    // Show Diff Editor
+    await vscode.commands.executeCommand("vscode.diff", vscode.Uri.file(filePath), tempUri, `Kritiq Review: ${fileName}`);
+
+    // Ask User for Action
+    const choice = await vscode.window.showQuickPick(["Apply Changes", "Discard"], { 
+        placeHolder: `Accept AI changes for ${fileName}?`,
+        ignoreFocusOut: true 
+    });
+    
+    // Close Diff Editor (Best Effort)
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+
+    if (choice === "Apply Changes") {
+        fs.writeFileSync(filePath, modified, 'utf8');
+        vscode.window.showInformationMessage(`Updated ${fileName}`);
+        return true;
+    }
+    return false;
+}
+
+function log(msg) { 
+    if (outputChannel) {
+        outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] ${msg}`); 
+    }
 }
 
 function deactivate() {}
-
 module.exports = { activate, deactivate };
