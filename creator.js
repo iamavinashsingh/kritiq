@@ -5,7 +5,7 @@ const path = require("path");
 const { exec } = require("child_process");
 const { promisify } = require("util");
 // Fixed: Added AIMessage to imports to prevent type confusion
-const { HumanMessage, SystemMessage, ToolMessage, AIMessage } = require("@langchain/core/messages");
+const { HumanMessage, SystemMessage, ToolMessage } = require("@langchain/core/messages");
 
 const asyncExecute = promisify(exec);
 

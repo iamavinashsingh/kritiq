@@ -3,7 +3,7 @@
   "displayName": "Kritiq AI: The Senior Reviewer",
   "description": "One-click AI Code Reviewer & Auto-Fix Agent using Gemini.",
   "publisher": "AvinashSingh",
-  "version": "1.0.1",
+  "version": "2.O",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.90.0"
@@ -13,14 +13,9 @@
     "Linters",
     "Other"
   ],
-  "keywords": [
-    "AI",
-    "Code Review",
-    "Gemini",
-    "Auto-fix",
-    "Refactor"
+  "activationEvents": [
+    "onCommand:kritiq.startReview"
   ],
-  "activationEvents": [],
   "main": "./extension.js",
   "contributes": {
     "commands": [
@@ -55,18 +50,14 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.90.0",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.0.0"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@langchain/core": "^1.1.16",
-    "@langchain/google-genai": "^2.1.12",
-    "langchain": "^1.2.12",
+    "@langchain/core": "^0.3.0",
+    "@langchain/google-genai": "^0.1.0",
     "vscode-uri": "^3.1.0"
   }
 }
