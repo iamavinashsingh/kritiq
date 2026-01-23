@@ -3,7 +3,7 @@
   "displayName": "Kritiq AI: The Senior Reviewer",
   "description": "One-click AI Code Reviewer & Auto-Fix Agent using Gemini.",
   "publisher": "AvinashSingh",
-  "version": "2.O",
+  "version": "2.0.0", 
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.90.0"
@@ -13,9 +13,7 @@
     "Linters",
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:kritiq.startReview"
-  ],
+  "activationEvents": [], 
   "main": "./extension.js",
   "contributes": {
     "commands": [
