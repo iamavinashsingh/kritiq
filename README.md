@@ -5,7 +5,9 @@
 > It behaves like a calm, opinionated senior engineer: reviewing code transparently, fixing only what is broken, and never acting as a black box.
 
 ---
+## Link :-[Kritiq AI](https://marketplace.visualstudio.com/items?itemName=AvinashSingh.kritiq)
 
+---
 ## Zero‑Friction Workflow (Right‑Click → Review)
 
 No chat windows. No copy‑paste. No context switching.
